@@ -1,0 +1,7 @@
+[
+{
+  "directory": "/home/matheus/development/audio-waves/build",
+  "command": "/usr/bin/g++  -DFMT_LOCALE -isystem vcpkg_installed/x64-linux/include  -g   -std=c++17 -o src/audio_demo/CMakeFiles/audio_demo.dir/main.cpp.o -c /home/matheus/development/audio-waves/src/audio_demo/main.cpp",
+  "file": "/home/matheus/development/audio-waves/src/audio_demo/main.cpp"
+}
+]
