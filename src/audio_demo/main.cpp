@@ -10,21 +10,6 @@ extern "C"
 #include <string>
 #include <thread>
 
-
-using PsStreamCallback = int (*)(const void *input,
-  void *output,
-  unsigned long frameCount,
-  const PaStreamCallbackTimeInfo* timeInfo,
-  PaStreamCallbackFlags statusFlags,
-  void *userData);
-
-struct PaTestData
-{
-    float left_phase;
-    float right_phase;
-    float step;
-};
-
 /* This routine will be called by the PortAudio engine when audio is needed.
  * It may called at interrupt level on some machines so don't do anything
  * that could mess up the system like calling malloc() or free().
@@ -80,45 +65,88 @@ static constexpr std::array<Note, 7> space_odyssey{{
     {NoteId::Eb2, 1244.51, 1200}
 }};
 
+namespace
+{
+    bool initialisePortAudio()
+    {
+        auto const init_error = Pa_Initialize();
+        if (init_error != paNoError ) 
+        {
+            std::cout << fmt::format("PortAudioError : %s\n", Pa_GetErrorText(init_error));
+            return false;
+        }
+
+        return true;
+    }
+
+    using PaStreamDestroyer = void (*)(PaStream*);
+    using PaStreamPtr = std::unique_ptr<PaStream, PaStreamDestroyer>;
+
+    struct PaStreamData
+    {
+        float left_phase;
+        float right_phase;
+        float step;
+    };
+
+    void paStreamDestroy(PaStream* instance)
+    {
+        if (instance)
+        {
+            auto const stream_close_error = Pa_CloseStream(instance);
+            if (stream_close_error != paNoError)
+            {
+                std::cout << fmt::format("error closing the stream: %s\n", Pa_GetErrorText(stream_close_error));
+            }
+        }
+    }
+
+    PaStreamPtr createDefaultStream(int n_in_channels,
+      int n_out_channels,
+      int sample_rate,
+      PaStreamData& data)
+    {
+        PaStream* stream = nullptr;
+        auto const stream_error = Pa_OpenDefaultStream( &stream,
+        0,          /* no input channels */
+        2,          /* stereo output */
+        paFloat32,  /* 32 bit floating point output */
+        4410,
+        256,        /* frames per buffer, i.e. the number
+        of sample frames that PortAudio will
+        request from the callback. Many apps
+        may want to use
+        paFramesPerBufferUnspecified, which
+        tells PortAudio to pick the best,
+        possibly changing, buffer size.*/
+        patestCallback, /* this is your callback function */
+        &data); /*This is a pointer that will be passed to
+        your callback*/
+
+        if(stream_error != paNoError )
+        {
+            std::string const error_message = Pa_GetErrorText(stream_error);
+            std::cout << fmt::format("error opening the stream: %s\n", Pa_GetErrorText(stream_error));
+            return PaStreamPtr{nullptr, paStreamDestroy};
+        }
+        
+        return PaStreamPtr{stream, paStreamDestroy};
+    }
+    
+} // namespace
+
 int main()
 {
-    auto const init_error = Pa_Initialize();
-    if (init_error != paNoError ) 
+
+    if (!initialisePortAudio())
     {
-        std::cout << fmt::format("PortAudioError : %s\n", Pa_GetErrorText(init_error));
         return -1;
     }
 
-
-    // This where we play the audio stuff
-    PaTestData data{-1.0f, -1.0f, 0.00f};
-    PaStream *stream = nullptr;
-
-    /* Open an audio I/O stream. */
-    auto const stream_error = Pa_OpenDefaultStream( &stream,
-      0,          /* no input channels */
-      2,          /* stereo output */
-      paFloat32,  /* 32 bit floating point output */
-      4410,
-      256,        /* frames per buffer, i.e. the number
-      of sample frames that PortAudio will
-      request from the callback. Many apps
-      may want to use
-      paFramesPerBufferUnspecified, which
-      tells PortAudio to pick the best,
-      possibly changing, buffer size.*/
-      patestCallback, /* this is your callback function */
-      &data); /*This is a pointer that will be passed to
-      your callback*/
-
-    if(stream_error != paNoError )
-    {
-        std::string const error_message = Pa_GetErrorText(stream_error);
-        std::cout << fmt::format("error opening the stream: %s\n", Pa_GetErrorText(stream_error));
-        return -1;
-    }
-
-    auto const start_stream_error = Pa_StartStream( stream );
+    PaStreamData data{-1.0f, -1.0f, 0.00f};
+    auto stream = createDefaultStream(0, 2, 44100, data);
+    
+    auto const start_stream_error = Pa_StartStream(stream.get());
     if (start_stream_error != paNoError)
     {
         std::string const error_message = Pa_GetErrorText(start_stream_error);
@@ -133,17 +161,12 @@ int main()
         std::this_thread::sleep_for(std::chrono::microseconds(static_cast<int>(note.ms * 1000)));
     }
 
-    auto const stop_stream_error = Pa_StopStream( stream );
+    auto const stop_stream_error = Pa_StopStream(stream.get());
     if (stop_stream_error != paNoError)
     {
         std::cout << fmt::format("error stopping the stream: %s\n", Pa_GetErrorText(stop_stream_error));
     }
 
-    auto const stream_close_error = Pa_CloseStream( stream );
-    if (stream_close_error != paNoError)
-    {
-        std::cout << fmt::format("error closing the stream: %s\n", Pa_GetErrorText(stream_close_error));
-    }
 
     auto const deinit_error = Pa_Terminate();
     if(deinit_error != paNoError )
