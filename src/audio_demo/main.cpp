@@ -1,226 +1,89 @@
+#include <audio/audio.h>
+
 #include <fmt/format.h>
-extern "C"
-{
-#include <portaudio.h>
-}
 
 #include <array>
 #include <chrono>
 #include <iostream>
+#include <optional>
 #include <string>
 #include <thread>
-
-enum class NoteId
-{
-    C1,
-    G1,
-    C2,
-    E2,
-    Eb2
-};
-
-struct Note
-{
-    NoteId id;
-    float freq;
-    float ms;
-};
-
-static constexpr std::array<Note, 7> space_odyssey{{
-    {NoteId::C1, 523.25f, 1500},
-    {NoteId::G1, 783.99f, 1500},
-    {NoteId::C2, 1046.50, 1500},
-    {NoteId::E2, 1318.51, 600},
-    {NoteId::Eb2, 1244.51, 1200}
-}};
+#include <unordered_map>
 
 namespace
 {
-    struct PortAudio
+    enum class NoteId
     {
-        int settings; // TODO : PortAudio future settings
-    };
-    using PortAudioDestroyer = void (*)(PortAudio*);
-    using PortAudioPtr = std::unique_ptr<PortAudio, PortAudioDestroyer>;
-
-    void portAudioDestroy(PortAudio* instance)
-    {
-        // TODO : Rethink the logic here, regarding
-        //        what the PortAudio instnce holds
-        if (instance)
-        {
-            auto const error = Pa_Terminate();
-            if(error != paNoError )
-            {
-                std::string const error_message = Pa_GetErrorText(error);
-                std::cout << fmt::format("PortAudio error: %s\n", error_message);
-            }
-        }
-    }
-
-    PortAudioPtr initialisePortAudio()
-    {
-        auto const init_error = Pa_Initialize();
-        if (init_error != paNoError ) 
-        {
-            std::cout << fmt::format("PortAudioError : %s\n", Pa_GetErrorText(init_error));
-            return PortAudioPtr{nullptr, portAudioDestroy};
-        }
-
-        return PortAudioPtr{new PortAudio{1}, portAudioDestroy};
-    }
-
-    using PaStreamDestroyer = void (*)(PaStream*);
-    using PaStreamPtr = std::unique_ptr<PaStream, PaStreamDestroyer>;
-
-    struct PaStreamData
-    {
-        float left_phase;
-        float right_phase;
-        float step;
+        C1,
+        G1,
+        C2,
+        E2,
+        Eb2
     };
 
-    /* This routine will be called by the PortAudio engine when audio is needed.
-    * It may called at interrupt level on some machines so don't do anything
-    * that could mess up the system like calling malloc() or free().
-    */
-    static int patestCallback( const void *inputBuffer, void *outputBuffer,
-                            unsigned long framesPerBuffer,
-                            const PaStreamCallbackTimeInfo* timeInfo,
-                            PaStreamCallbackFlags statusFlags,
-                            void *userData )
+    struct Note
     {
-        /* Cast data passed through stream to our structure. */
-        PaStreamData *data = (PaStreamData*)userData;
-        float *out = (float*)outputBuffer;
-        unsigned int i;
-        (void) inputBuffer; /* Prevent unused variable warning. */
+        NoteId id;
+        float time_ms;
+    };
 
-        for( i=0; i<framesPerBuffer; i++ )
+    static constexpr std::array<Note, 5> space_odyssey{{
+        {NoteId::C1, 1500},
+        {NoteId::G1, 1500},
+        {NoteId::C2, 1500},
+        {NoteId::E2, 600},
+        {NoteId::Eb2, 1200}
+    }};
+
+    inline std::optional<float> get_note_freq(NoteId note_id)
+    {
+        // NodeId -> Frequence map
+        static std::unordered_map<NoteId, float> const note_frequencies{{
+            {NoteId::C1, 523.25f},
+            {NoteId::G1, 783.99f},
+            {NoteId::C2, 1046.50f},
+            {NoteId::E2, 1318.51f},
+            {NoteId::Eb2, 1244.51f}
+        }};
+
+        auto const found = note_frequencies.find(note_id);
+        if (found == end(note_frequencies))
         {
-            *(out++) = data->left_phase;  /* left */
-            *(out++) = data->right_phase;  /* right */
-            /* Generate simple sawtooth phaser that ranges between -1.0 and 1.0. */
-            data->left_phase += data->step;
-            /* When signal reaches top, drop back down. */
-            if( data->left_phase >= 1.0f ) data->left_phase -= 2.0f;
-            /* higher pitch so we can distinguish left and right. */
-            data->right_phase += data->step;
-            if( data->right_phase >= 1.0f ) data->right_phase -= 2.0f;
+            return std::nullopt;
         }
-        return 0;
+
+        return found->second;
     }
 
-    void paStreamDestroy(PaStream* instance)
-    {
-        if (instance)
-        {
-            auto const stream_close_error = Pa_CloseStream(instance);
-            if (stream_close_error != paNoError)
-            {
-                std::cout << fmt::format("error closing the stream: %s\n", Pa_GetErrorText(stream_close_error));
-            }
-        }
-    }
-
-    PaStreamPtr createDefaultStream(int n_in_channels,
-      int n_out_channels,
-      int sample_rate,
-      PaStreamData& data)
-    {
-        PaStream* stream = nullptr;
-        auto const stream_error = Pa_OpenDefaultStream( &stream,
-        0,          /* no input channels */
-        2,          /* stereo output */
-        paFloat32,  /* 32 bit floating point output */
-        4410,
-        256,        /* frames per buffer, i.e. the number
-        of sample frames that PortAudio will
-        request from the callback. Many apps
-        may want to use
-        paFramesPerBufferUnspecified, which
-        tells PortAudio to pick the best,
-        possibly changing, buffer size.*/
-        patestCallback, /* this is your callback function */
-        &data); /*This is a pointer that will be passed to
-        your callback*/
-
-        if(stream_error != paNoError )
-        {
-            std::string const error_message = Pa_GetErrorText(stream_error);
-            std::cout << fmt::format("error opening the stream: %s\n", Pa_GetErrorText(stream_error));
-            return PaStreamPtr{nullptr, paStreamDestroy};
-        }
-        
-        return PaStreamPtr{stream, paStreamDestroy};
-    }
-
-    bool start_stream(PaStream* stream)
-    {
-        if (stream == nullptr)
-        {
-            return false;
-        }
-
-
-        auto const error = Pa_StartStream(stream);
-        if (error != paNoError)
-        {
-            std::string const error_message = Pa_GetErrorText(error);
-            std::cout << fmt::format("error starting the stream: %s\n", error_message);
-            return false;
-        }
-
-        return true;
-    }
-
-    bool stop_stream(PaStream* stream)
-    {
-        if (stream == nullptr)
-        {
-            return false;
-        }
-
-        auto const error = Pa_StopStream(stream);
-        if (error != paNoError)
-        {
-            std::string const error_message = Pa_GetErrorText(error);
-            std::cout << fmt::format("error stopping the stream: %s\n", error_message);
-            return false;
-        }
-
-        return true;
-    }
-    
 } // namespace
 
 int main()
 {
-    auto portAudio = initialisePortAudio();
-
-    PaStreamData data{-1.0f, -1.0f, 0.00f};
-    auto stream = createDefaultStream(0, 2, 44100, data);
+    // What happens when portAudio is no longer referenced?
+    audio::PaStreamData data{-1.0f, -1.0f, 0.00f};
+    auto portAudio = audio::initialise_backend(&data);
     
-    if (!stream)
-    {
-        return -1;
-    }
-
-    if (!start_stream(stream.get()))
+    if (!portAudio->stream->start())
     {
         return -1;
     }
 
     for (auto const note : space_odyssey)
     {
-        float const freq = note.freq;
-        float const step = 3.0f / (44100 / freq);
+        auto const freq = get_note_freq(note.id);
+        if (!freq)
+        {
+            std::cout << "invalid note given\n";
+            continue;
+        }
+        
+        float const step = 3.0f / (44100 / *freq);
         data.step = step;
-        std::this_thread::sleep_for(std::chrono::microseconds(static_cast<int>(note.ms * 1000)));
+        std::this_thread::sleep_for(std::chrono::microseconds(static_cast<int>(note.time_ms * 1000)));
     }
 
     // stop stream here
-    if (!stop_stream(stream.get()))
+    if (!portAudio->stream->stop())
     {
         std::cout << fmt::format("failed to stop the stream!");
         return -1;
