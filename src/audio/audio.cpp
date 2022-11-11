@@ -1,5 +1,6 @@
 #include "audio/audio.h"
 
+#include <boost/lockfree/spsc_queue.hpp>
 #include <fmt/format.h>
 #include <spdlog/spdlog.h>
 extern "C"

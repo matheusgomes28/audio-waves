@@ -1,5 +1,6 @@
 #include <audio/audio.h>
 
+#include <boost/lockfree/spsc_queue.hpp>
 #include <fmt/format.h>
 
 #include <array>
@@ -59,6 +60,9 @@ namespace
 
 int main()
 {
+    boost::lockfree::spsc_queue<float, boost::lockfree::capacity<512>> queue;
+
+
     // What happens when portAudio is no longer referenced?
     audio::PaStreamData data{-1.0f, -1.0f, 0.00f};
     auto portAudio = audio::initialise_backend(&data);
