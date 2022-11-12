@@ -1,8 +1,6 @@
 #ifndef AUDIO_H
 
 #include <boost/lockfree/spsc_queue.hpp>
-#include <boost/lockfree/policies.hpp>
-
 #include <memory>
 
 struct PaStreamCallbackTimeInfo;
@@ -15,8 +13,8 @@ namespace audio
         float left_phase;
         float right_phase;
         float step;
-        boost::lockfree::spsc_queue<float, boost::lockfree::capacity<512>> left;
-        boost::lockfree::spsc_queue<float, boost::lockfree::capacity<512>> right;
+        boost::lockfree::spsc_queue<float, boost::lockfree::capacity<1024>> left;
+        boost::lockfree::spsc_queue<float, boost::lockfree::capacity<1024>> right;
     };
 
     // yes, PaStream* = void* ...

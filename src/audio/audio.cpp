@@ -8,6 +8,7 @@ extern "C"
     #include <portaudio.h>
 }
 
+#include <array>
 #include <memory>
 #include <string>
 
@@ -37,7 +38,7 @@ namespace
         0,          /* no input channels */
         2,          /* stereo output */
         paFloat32,  /* 32 bit floating point output */
-        4410,
+        44100,
         256,        /* frames per buffer, i.e. the number
         of sample frames that PortAudio will
         request from the callback. Many apps
@@ -72,20 +73,33 @@ namespace
         /* Cast data passed through stream to our structure. */
         auto *data = (audio::PaStreamData*)userData;
         float *out = (float*)outputBuffer;
-        unsigned int i;
         (void) inputBuffer; /* Prevent unused variable warning. */
 
-        for( i=0; i<framesPerBuffer; i++ )
+        std::array<float, 256> left;
+        std::array<float, 256> right;
+
+        if ((data->left.read_available() >= 256) && (data->right.read_available() >= 256))
         {
-            *(out++) = data->left_phase;  /* left */
-            *(out++) = data->right_phase;  /* right */
-            /* Generate simple sawtooth phaser that ranges between -1.0 and 1.0. */
-            data->left_phase += data->step;
-            /* When signal reaches top, drop back down. */
-            if( data->left_phase >= 1.0f ) data->left_phase -= 2.0f;
-            /* higher pitch so we can distinguish left and right. */
-            data->right_phase += data->step;
-            if( data->right_phase >= 1.0f ) data->right_phase -= 2.0f;
+            for (int i = 0; i < framesPerBuffer; ++i)
+            {
+
+                float left_sample = 0.0f;
+                if (!data->left.pop(left_sample))
+                {
+                    return 0;
+                }
+                *(out++) = left_sample;
+                left[i] = left_sample;
+
+                float right_sample = 0.0;
+                if (!data->right.pop(right_sample))
+                {
+                    return 0;
+                }
+                *(out++) = right_sample;
+                right[i] = right_sample;
+
+            }
         }
         return 0;
     }

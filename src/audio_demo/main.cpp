@@ -56,12 +56,32 @@ namespace
         return found->second;
     }
 
+    std::vector<float> create_square_wave(int ms, float freq)
+    {
+        std::vector<float> sound_wave;
+        float const num_samples = (44100.0f / 1000.0f) * ms;
+        float const step = 3.0f / (44100 / freq);
+
+        sound_wave.reserve(num_samples);
+        float current = 0.0f;
+        for (int i = 0; i < num_samples; ++i)
+        {
+            if (current >= 1.0f)
+            {
+                current = -2.0f;
+            }
+            sound_wave.push_back(current);
+            current += step;
+        }
+
+        return sound_wave;
+    }
+
 } // namespace
 
+using namespace std::chrono_literals;
 int main()
 {
-    boost::lockfree::spsc_queue<float, boost::lockfree::capacity<512>> queue;
-
 
     // What happens when portAudio is no longer referenced?
     audio::PaStreamData data{-1.0f, -1.0f, 0.00f};
@@ -72,18 +92,31 @@ int main()
         return -1;
     }
 
-    for (auto const note : space_odyssey)
+
+    std::vector<float> whole_song;
+    for (auto const& note : space_odyssey)
     {
-        auto const freq = get_note_freq(note.id);
-        if (!freq)
+        auto const note_wave = create_square_wave(note.time_ms, (*get_note_freq(note.id))/2);
+        whole_song.insert(end(whole_song), begin(note_wave), end(note_wave));
+    }
+
+    if ((data.left.write_available() >= 512) & (data.right.write_available() >= 512))
+    {
+        int const total_chunks = whole_song.size() / 512;
+        int n_chunks_left = total_chunks;
+        while (n_chunks_left > 0) 
         {
-            std::cout << "invalid note given\n";
-            continue;
+            if ((data.left.write_available() >= 512) && (data.left.write_available() >= 512))
+            {
+                for (int i = 0; i < 512; ++i)
+                {
+                    float const sample =whole_song.at((total_chunks - n_chunks_left)*512 + i) ;
+                    data.left.push(sample);
+                    data.right.push(sample);
+                }
+                n_chunks_left--;
+            }
         }
-        
-        float const step = 3.0f / (44100 / *freq);
-        data.step = step;
-        std::this_thread::sleep_for(std::chrono::microseconds(static_cast<int>(note.time_ms * 1000)));
     }
 
     // stop stream here
