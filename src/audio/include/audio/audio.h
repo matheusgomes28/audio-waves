@@ -13,8 +13,8 @@ namespace audio
         float left_phase;
         float right_phase;
         float step;
-        boost::lockfree::spsc_queue<float, boost::lockfree::capacity<1024>> left;
-        boost::lockfree::spsc_queue<float, boost::lockfree::capacity<1024>> right;
+        boost::lockfree::spsc_queue<float, boost::lockfree::capacity<16384>> left;
+        boost::lockfree::spsc_queue<float, boost::lockfree::capacity<16384>> right;
     };
 
     // yes, PaStream* = void* ...

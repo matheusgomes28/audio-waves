@@ -82,7 +82,6 @@ namespace
         {
             for (int i = 0; i < framesPerBuffer; ++i)
             {
-
                 float left_sample = 0.0f;
                 if (!data->left.pop(left_sample))
                 {
