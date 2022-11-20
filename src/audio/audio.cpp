@@ -87,7 +87,7 @@ namespace
                 {
                     return 0;
                 }
-                *(out++) = left_sample;
+                *(out++) = left_sample * (data->multiplier);
                 left[i] = left_sample;
 
                 float right_sample = 0.0;
@@ -95,7 +95,7 @@ namespace
                 {
                     return 0;
                 }
-                *(out++) = right_sample;
+                *(out++) = right_sample * (data->multiplier);
                 right[i] = right_sample;
 
             }
@@ -109,11 +109,6 @@ namespace audio
     Stream::Stream(PaStreamData* data, Callback callback)
         : _pa_stream{create_default_stream(0, 2, 44100, data, callback)}
     {
-    }
-
-    bool Stream::is_valid()
-    {
-        return _pa_stream.get() != nullptr;
     }
 
     bool Stream::start()
@@ -150,6 +145,17 @@ namespace audio
         }
 
         return true;
+    }
+
+    bool Stream::is_active() const
+    {
+        auto const error = Pa_IsStreamActive(_pa_stream.get());
+        if (error < 0) // actual PaErrors are < 0
+        {
+            return false;
+        }
+
+        return error == 1;    
     }
 
     AudioBackendPtr initialise_backend(PaStreamData* data)

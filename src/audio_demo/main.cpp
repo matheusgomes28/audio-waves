@@ -62,7 +62,7 @@ namespace
     {
         std::vector<float> sound_wave;
         float const num_samples = (44100.0f / 1000.0f) * ms;
-        float const step = 3.0f / (44100 / freq);
+        float const step = 2.0f / (44100 / freq);
 
         sound_wave.reserve(num_samples);
         float current = 0.0f;
@@ -70,7 +70,7 @@ namespace
         {
             if (current >= 1.0f)
             {
-                current = -2.0f;
+                current = -1.0f;
             }
             sound_wave.push_back(current);
             current += step;
@@ -113,7 +113,11 @@ int main()
 
     // What happens when portAudio is no longer referenced?
     audio::PaStreamData data{-1.0f, -1.0f, 0.00f};
+    data.multiplier = 0.1;
     auto portAudio = audio::initialise_backend(&data);
+
+    auto const is_lock_left = data.left.is_lock_free();
+    auto const is_lock_right = data.right.is_lock_free();
     
     if (!portAudio->stream->start())
     {
@@ -134,8 +138,14 @@ int main()
     {
         auto const left_written = write_to_buffer(whole_song_left, data.left);
         auto const right_written =  write_to_buffer(whole_song_right, data.right);
-        should_continue = left_written && right_written && (whole_song_left.size() > 0) && (whole_song_right.size() > 0);
-        std::this_thread::sleep_for(250ms);
+        auto const stream_active = portAudio->stream->is_active();
+        should_continue = stream_active &&
+          left_written &&
+          right_written && 
+          (whole_song_left.size() > 0) &&
+          (whole_song_right.size() > 0);
+
+        std::this_thread::sleep_for(100ms);
     }
     
     // wait for audio to finish
