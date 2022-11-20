@@ -1,5 +1,6 @@
 #ifndef AUDIO_H
 
+#include <boost/lockfree/spsc_queue.hpp>
 #include <memory>
 
 struct PaStreamCallbackTimeInfo;
@@ -12,6 +13,9 @@ namespace audio
         float left_phase;
         float right_phase;
         float step;
+        boost::lockfree::spsc_queue<float, boost::lockfree::capacity<16384>> left;
+        boost::lockfree::spsc_queue<float, boost::lockfree::capacity<16384>> right;
+        float multiplier;
     };
 
     // yes, PaStream* = void* ...
@@ -30,9 +34,9 @@ namespace audio
     public:
         Stream(PaStreamData* data, Callback callback);
 
-        bool is_valid();
         bool start();
         bool stop();
+        bool is_active() const;
 
     private:
         // Maybe take a look at unique_ptr<void, deleter>
