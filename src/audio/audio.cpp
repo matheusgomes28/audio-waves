@@ -100,6 +100,7 @@ namespace
 
             }
         }
+        data->queue_ready = true;
         return 0;
     }
 } // namespace

@@ -5,16 +5,17 @@
 
 #include <array>
 #include <chrono>
+#include <condition_variable>
 #include <deque>
 #include <iostream>
 #include <optional>
 #include <string>
 #include <thread>
 #include <unordered_map>
-#include <vector>
 
 namespace
 {
+
     enum class NoteId
     {
         C1,
@@ -112,7 +113,7 @@ int main()
 {
 
     // What happens when portAudio is no longer referenced?
-    audio::PaStreamData data{-1.0f, -1.0f, 0.00f};
+    audio::PaStreamData data{-1.0f, -1.0f, 0.00f, {}, {}, 0.1f, true};
     data.multiplier = 0.1;
     auto portAudio = audio::initialise_backend(&data);
 
@@ -138,14 +139,24 @@ int main()
     {
         auto const left_written = write_to_buffer(whole_song_left, data.left);
         auto const right_written =  write_to_buffer(whole_song_right, data.right);
+        bool queue_ready_test = true;
+        
+        auto const left_available = data.left.write_available() > 0;
+        auto const right_available = data.right.write_available() > 0;
+
+        if (!data.queue_ready.compare_exchange_weak(queue_ready_test, left_available && right_available))
+        {
+            continue;
+        }
         auto const stream_active = portAudio->stream->is_active();
+
         should_continue = stream_active &&
           left_written &&
           right_written && 
           (whole_song_left.size() > 0) &&
           (whole_song_right.size() > 0);
 
-        std::this_thread::sleep_for(100ms);
+        // if the full flag is no longer set
     }
     
     // wait for audio to finish
