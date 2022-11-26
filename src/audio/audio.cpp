@@ -30,15 +30,15 @@ namespace
     audio::PaStreamPtr create_default_stream(int n_in_channels,
         int n_out_channels,
         int sample_rate,
-        audio::PaStreamData* data,
+        audio::AudioQueue* data,
         audio::Callback callback)
     {
         PaStream* stream = nullptr;
         auto const stream_error = Pa_OpenDefaultStream( &stream,
-        0,          /* no input channels */
-        2,          /* stereo output */
+        n_in_channels,          /* no input channels */
+        n_out_channels,          /* stereo output */
         paFloat32,  /* 32 bit floating point output */
-        44100,
+        sample_rate,
         256,        /* frames per buffer, i.e. the number
         of sample frames that PortAudio will
         request from the callback. Many apps
@@ -66,12 +66,12 @@ namespace
     */
     static int default_callback( const void *inputBuffer, void *outputBuffer,
                             unsigned long framesPerBuffer,
-                            const PaStreamCallbackTimeInfo* timeInfo,
-                            unsigned long statusFlags,
+                            const PaStreamCallbackTimeInfo* /* timeInfo */,
+                            unsigned long /* statusFlags */,
                             void *userData )
     {
         /* Cast data passed through stream to our structure. */
-        auto *data = (audio::PaStreamData*)userData;
+        auto *data = (audio::AudioQueue*)userData;
         float *out = (float*)outputBuffer;
         (void) inputBuffer; /* Prevent unused variable warning. */
 
@@ -80,7 +80,7 @@ namespace
 
         if ((data->left.read_available() >= 256) && (data->right.read_available() >= 256))
         {
-            for (int i = 0; i < framesPerBuffer; ++i)
+            for (unsigned long i = 0; i < framesPerBuffer; ++i)
             {
                 float left_sample = 0.0f;
                 if (!data->left.pop(left_sample))
@@ -107,7 +107,7 @@ namespace
 
 namespace audio
 {
-    Stream::Stream(PaStreamData* data, Callback callback)
+    Stream::Stream(AudioQueue* data, Callback callback)
         : _pa_stream{create_default_stream(0, 2, 44100, data, callback)}
     {
     }
@@ -159,14 +159,14 @@ namespace audio
         return error == 1;    
     }
 
-    AudioBackendPtr initialise_backend(PaStreamData* data)
+    AudioBackendPtr initialise_backend(AudioQueue* data)
     {
         auto const init_error = Pa_Initialize();
         if (init_error != paNoError ) 
         {
             std::string const error_message = Pa_GetErrorText(init_error);
             spdlog::error("error initialising PortAudio: %s", error_message);
-            return AudioBackendPtr{nullptr, [](AudioBackend* instance){}};
+            return AudioBackendPtr{nullptr, [](AudioBackend*){}};
         }
 
         return AudioBackendPtr{new AudioBackend{std::make_unique<Stream>(data, default_callback)},

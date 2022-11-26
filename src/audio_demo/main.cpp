@@ -28,7 +28,7 @@ namespace
     struct Note
     {
         NoteId id;
-        float time_ms;
+        int time_ms;
     };
 
     static constexpr std::array<Note, 5> space_odyssey{{
@@ -61,23 +61,21 @@ namespace
 
     std::vector<float> create_square_wave(int ms, float freq)
     {
-        std::vector<float> sound_wave;
-        float const num_samples = (44100.0f / 1000.0f) * ms;
+        int const num_samples = static_cast<int>((44100.0f / 1000.0f) * ms);
         float const step = 2.0f / (44100 / freq);
 
-        sound_wave.reserve(num_samples);
-        float current = 0.0f;
-        for (int i = 0; i < num_samples; ++i)
-        {
-            if (current >= 1.0f)
-            {
-                current = -1.0f;
-            }
-            sound_wave.push_back(current);
-            current += step;
-        }
+        auto const sample_per_osc = 44100.0f / freq;
+        std::vector<float> const positive_osc(static_cast<unsigned int>(sample_per_osc / 2), 1.0f);
+        std::vector<float> const negative_osc(static_cast<unsigned int>(sample_per_osc / 2), -1.0f);
 
-        return sound_wave;
+        std::vector<float> whole_sound;
+        whole_sound.reserve(num_samples * 10);
+        for (int i = 0; i < freq; ++i)
+        {
+            whole_sound.insert(end(whole_sound), begin(positive_osc), end(positive_osc));
+            whole_sound.insert(end(whole_sound), begin(negative_osc), end(negative_osc));
+        }
+        return whole_sound;
     }
 
     static std::size_t constexpr audio_buffer_size = 16384;
@@ -113,8 +111,7 @@ int main()
 {
 
     // What happens when portAudio is no longer referenced?
-    audio::PaStreamData data{-1.0f, -1.0f, 0.00f, {}, {}, 0.1f, true};
-    data.multiplier = 0.1;
+    audio::AudioQueue data{{}, {}, true, 0.1f};
     auto portAudio = audio::initialise_backend(&data);
 
     auto const is_lock_left = data.left.is_lock_free();
@@ -139,11 +136,10 @@ int main()
     {
         auto const left_written = write_to_buffer(whole_song_left, data.left);
         auto const right_written =  write_to_buffer(whole_song_right, data.right);
-        bool queue_ready_test = true;
         
         auto const left_available = data.left.write_available() > 0;
         auto const right_available = data.right.write_available() > 0;
-
+        bool queue_ready_test = true;
         if (!data.queue_ready.compare_exchange_weak(queue_ready_test, left_available && right_available))
         {
             continue;

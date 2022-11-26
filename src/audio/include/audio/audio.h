@@ -10,18 +10,14 @@ struct PaStreamCallbackTimeInfo;
 
 namespace audio
 {
-    struct PaStreamData
+    struct AudioQueue
     {
-        float left_phase;
-        float right_phase;
-        float step;
         boost::lockfree::spsc_queue<float, boost::lockfree::capacity<16384>> left;
         boost::lockfree::spsc_queue<float, boost::lockfree::capacity<16384>> right;
-        float multiplier;
         std::atomic<bool> queue_ready;
+        float multiplier;
     };
 
-    // yes, PaStream* = void* ...
     using PaStreamCallbackFlags = unsigned long;
     using PaStreamDestroyer = void (*)(void*);
     using PaStreamPtr = std::unique_ptr<void, PaStreamDestroyer>;
@@ -35,7 +31,7 @@ namespace audio
     class Stream
     {
     public:
-        Stream(PaStreamData* data, Callback callback);
+        Stream(AudioQueue* data, Callback callback);
 
         bool start();
         bool stop();
@@ -57,7 +53,7 @@ namespace audio
 
     using BackendDestroyer = void (*)(AudioBackend*);
     using AudioBackendPtr = std::unique_ptr<AudioBackend, BackendDestroyer>;
-    AudioBackendPtr initialise_backend(PaStreamData* data);
+    AudioBackendPtr initialise_backend(AudioQueue* data);
 } // namespace audio
 
 #endif // AUDIO_H
