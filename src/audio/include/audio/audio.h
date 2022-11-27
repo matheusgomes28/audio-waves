@@ -10,10 +10,12 @@ struct PaStreamCallbackTimeInfo;
 
 namespace audio
 {
+    static std::size_t constexpr BUFFER_SIZE = 131072;
+
     struct AudioQueue
     {
-        boost::lockfree::spsc_queue<float, boost::lockfree::capacity<16384>> left;
-        boost::lockfree::spsc_queue<float, boost::lockfree::capacity<16384>> right;
+        boost::lockfree::spsc_queue<float> left;
+        boost::lockfree::spsc_queue<float> right;
         std::atomic<bool> queue_ready;
         float multiplier;
     };

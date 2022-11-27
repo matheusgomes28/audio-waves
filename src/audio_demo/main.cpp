@@ -5,6 +5,7 @@
 
 #include <array>
 #include <chrono>
+#include <cmath>
 #include <condition_variable>
 #include <deque>
 #include <iostream>
@@ -15,6 +16,9 @@
 
 namespace
 {
+    using AudioQueue = boost::lockfree::spsc_queue<float>;
+
+    static constexpr float SAMPLE_RATE = 44100.0f;
 
     enum class NoteId
     {
@@ -61,15 +65,26 @@ namespace
 
     std::vector<float> create_square_wave(int ms, float freq)
     {
-        int const num_samples = static_cast<int>((44100.0f / 1000.0f) * ms);
-        float const step = 2.0f / (44100 / freq);
+        if (freq <= 0)
+        {
+            // TODO : can this be an error or nullopt
+            return {};
+        }
 
-        auto const sample_per_osc = 44100.0f / freq;
-        std::vector<float> const positive_osc(static_cast<unsigned int>(sample_per_osc / 2), 1.0f);
-        std::vector<float> const negative_osc(static_cast<unsigned int>(sample_per_osc / 2), -1.0f);
+        if (ms <= 0)
+        {
+            // TODO : can this be an error or nullopt
+            return {};
+        }
+
+
+        auto const samples_per_value = (SAMPLE_RATE / freq) / 2.0f;
+        std::vector<float> const positive_osc(static_cast<unsigned int>(samples_per_value), 1.0f);
+        std::vector<float> const negative_osc(static_cast<unsigned int>(samples_per_value), -1.0f);
 
         std::vector<float> whole_sound;
-        whole_sound.reserve(num_samples * 10);
+        int const num_samples = static_cast<int>(std::ceil((SAMPLE_RATE / 1000.0f) * ms)); whole_sound.reserve(num_samples + 10);
+        whole_sound.reserve(num_samples);
         for (int i = 0; i < freq; ++i)
         {
             whole_sound.insert(end(whole_sound), begin(positive_osc), end(positive_osc));
@@ -78,8 +93,6 @@ namespace
         return whole_sound;
     }
 
-    static std::size_t constexpr audio_buffer_size = 16384;
-    using AudioQueue = boost::lockfree::spsc_queue<float, boost::lockfree::capacity<audio_buffer_size>>;
 
     bool write_to_buffer(std::deque<float>& source, AudioQueue& dest)
     {
@@ -109,19 +122,17 @@ namespace
 using namespace std::chrono_literals;
 int main()
 {
+    audio::AudioQueue data{
+      boost::lockfree::spsc_queue<float>{audio::BUFFER_SIZE},
+      boost::lockfree::spsc_queue<float>{audio::BUFFER_SIZE},
+      true,
+      0.1f};
 
-    // What happens when portAudio is no longer referenced?
-    audio::AudioQueue data{{}, {}, true, 0.1f};
     auto portAudio = audio::initialise_backend(&data);
-
-    auto const is_lock_left = data.left.is_lock_free();
-    auto const is_lock_right = data.right.is_lock_free();
-    
     if (!portAudio->stream->start())
     {
         return -1;
     }
-
 
     std::deque<float> whole_song_left;
     for (auto const& note : space_odyssey)
@@ -136,9 +147,11 @@ int main()
     {
         auto const left_written = write_to_buffer(whole_song_left, data.left);
         auto const right_written =  write_to_buffer(whole_song_right, data.right);
-        
+
         auto const left_available = data.left.write_available() > 0;
         auto const right_available = data.right.write_available() > 0;
+
+        // TODO : What am I trying to do?
         bool queue_ready_test = true;
         if (!data.queue_ready.compare_exchange_weak(queue_ready_test, left_available && right_available))
         {
@@ -151,18 +164,15 @@ int main()
           right_written && 
           (whole_song_left.size() > 0) &&
           (whole_song_right.size() > 0);
-
-        // if the full flag is no longer set
     }
     
     // wait for audio to finish
     auto const left_samples_read = data.left.read_available();
     auto const right_samples_read = data.right.read_available();
     auto const wait_for = std::max(left_samples_read, right_samples_read);
-    auto const wait_for_ms = static_cast<int>((wait_for / 44100.0f) * 1000);
+    auto const wait_for_ms = static_cast<int>((wait_for / SAMPLE_RATE) * 1000);
     std::this_thread::sleep_for(std::chrono::milliseconds(wait_for_ms + 10));
 
-    // stop stream here
     if (!portAudio->stream->stop())
     {
         std::cout << fmt::format("failed to stop the stream!");
